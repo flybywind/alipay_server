@@ -4,85 +4,149 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Date;
 
-import com.alipay.api.AlipayApiException;
-import com.alipay.api.DefaultAlipayClient;
-import com.alipay.api.request.AlipayTradePrecreateRequest;
-import com.alipay.api.request.AlipayTradeQueryRequest;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import com.alipay.api.AlipayResponse;
 import com.alipay.api.response.AlipayTradePrecreateResponse;
 import com.alipay.api.response.AlipayTradeQueryResponse;
+import com.alipay.demo.trade.config.Configs;
+import com.alipay.demo.trade.model.builder.AlipayTradePrecreateRequestBuilder;
+import com.alipay.demo.trade.model.builder.AlipayTradeQueryRequestBuilder;
+import com.alipay.demo.trade.model.result.AlipayF2FPrecreateResult;
+import com.alipay.demo.trade.service.AlipayTradeService;
+import com.alipay.demo.trade.service.impl.AlipayTradeServiceImpl;
 
 
 public class Server {
-	static String AliAppid = "2016081801766057";
-	static String ALIPAY_PUBLIC_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDI6d306Q8fIfCOaTXyiUeJHkrIvYISRcc73s3vF1ZT7XN8RNPwJxo8pWaJMmvyTn9N4HQ632qJBVHf8sxHi/fEsraprwCtzvzQETrNRwVxLO5jVmRGi60j8Ue1efIlzPXV9je9mkjzOmdssymZkh2QhUrCmZYI/FCEa3/cNMW0QIDAQAB";
-	static String APP_PRIVATE_KEY = "MIICcwIBADANBgkqhkiG9w0BAQEFAASCAl0wggJZAgEAAoGBAONa6kQCV5j/OL6Xnwt3pZ0ZmZpXnyM7wzzKsnUwbzNXTK1xZvlmRyZBlJS1Zd+x5GnROAuv+5r6QzNbY+9HwaCNIK9VZhIDeB+rZ/CnYaBLtQVJUFT1ccVZhXal4Txt/bM2LL/OgHdvlHrfWzVzPktfIciCJEAVya3guvpcuwrZAgMBAAECfyYwHylNO2l3dRCOZyiF8EtzAVnrXc+NOj37zf3hJMx63WZEpgc+JrVGTq6ryXDJcJRVkBRmetyNLLxznVWTt/Huls5p6KcJwROVXKPhwPRzLOKQd+zSY/pIALT0ZD0n176CSmmMTpc6+QVETV5X6Pe9MXVdA1T8QHxvvDA+ygECQQD/CBRuuJC2fXabhQeHKa94dzv98g82my/m4r9TRyyUSwpciT1sY+0nfm8DARqROkIJ8iJU5xt+Yf2b2LZDeHeZAkEA5DfuO7kEl/QGTsPP3GKWT31H3hneztHS78aB/qrFJptxLMey+J6wwcE0G+so5k+UWi55MGKtiAWgQ5EmcrI1QQJAcuPc8JRM/SlASYeAgK+S0R5F9H0bxWncBpOXxZiGyLeVj2J0PWQ27lfTAvN4WHx6S6i9Nqp2hFT4v0C9u1+F4QJAbbIIm8JR1+wegAuUxNzKXQjd237Z3tVyK3hiEZPp0aXTn2+ZsfEtCuSf9G9zKEjGCRbff4de28vAfdmt/mF0QQJADlS6M9xgL9ZotRZFhmkvVJ5FvHU4717oTFTl8iJGpFNuxuzi3Szq12X72Wv6gLsUg2ap6a64GfClNg/gNo5pAw==";
-	
-	private DefaultAlipayClient alipay_client;
-	private AlipayTradePrecreateRequest alipay_pre_trade_req;
-	void initAlipayClient() {
-		//实例化客户端
-		alipay_client = new DefaultAlipayClient("https://openapi.alipay.com/gateway.do",
-				AliAppid,
-				APP_PRIVATE_KEY,
-				"json",
-				"utf8",
-				ALIPAY_PUBLIC_KEY);
-		alipay_pre_trade_req = new AlipayTradePrecreateRequest();//创建API对应的request类
-	}
-	void tradePreOrder(String no, float price, String operator) {
-		ParamsMap param = new ParamsMap();
-		// 参数具体含义ref: https://doc.open.alipay.com/docs/api.htm?spm=a219a.7386797.0.0.2cPt2c&docType=4&apiId=862
-		param.addKV("out_trade_no", no)
-			.addKV("total_amount", price)
-			.addKV("subject", "test alipay")
-			.addKV("operator_id", operator)
-			.addKV("timeout_express", "30m");
-		System.out.println("param json:\n" + param.toJson());
-		alipay_pre_trade_req.setBizContent(param.toJson());
-		try {
-			AlipayTradePrecreateResponse response = alipay_client.execute(alipay_pre_trade_req);
-			//调用成功，则处理业务逻辑
-			if (response.isSuccess()) {
-				System.out.println("qr code url:" + response.getQrCode());
-				// 当面付异步通知：https://doc.open.alipay.com/doc2/detail.htm?treeId=194&articleId=103296&docType=1#s5
-			}
-		} catch (AlipayApiException e) {
-			System.out.println(e.getMessage());
-			e.printStackTrace();
-		}
-	}
-	String waitOrderStatus(String no) throws InterruptedException {
-		AlipayTradeQueryRequest req = new AlipayTradeQueryRequest();
-		
-		ParamsMap p = new ParamsMap();
-		p.addKV("out_trade_no", no);
-		req.setBizContent(p.toJson());
+	private static Log log = LogFactory.getLog(Server.class);
 
-		AlipayTradeQueryResponse resp;
-		try {
-			resp = alipay_client.execute(req);
-			String s = resp.getTradeStatus();
-			while (s == "WAIT_BUYER_PAY") {
-				resp = alipay_client.execute(req);
-				s = resp.getTradeStatus();
-				Thread.sleep(5*1000);
-				System.out.println("waiting for pay status ...");
-			}
+    // 支付宝当面付2.0服务
+    private static AlipayTradeService tradeService;
+    static {
+        /** 一定要在创建AlipayTradeService之前调用Configs.init()设置默认参数
+         *  Configs会读取classpath下的zfbinfo.properties文件配置信息，如果找不到该文件则确认该文件是否在classpath目录
+         */
+        Configs.init("zfbinfo.properties");
+
+        /** 使用Configs提供的默认参数
+         *  AlipayTradeService可以使用单例或者为静态成员对象，不需要反复new
+         */
+        tradeService = new AlipayTradeServiceImpl.ClientBuilder().build();
+    }
+    
+ // 简单打印应答
+    private void dumpResponse(AlipayResponse response) {
+        if (response != null) {
+            log.info(String.format("code:%s, msg:%s", response.getCode(), response.getMsg()));
+            if (!response.getSubCode().equals("")) {
+                log.info(String.format("subCode:%s, subMsg:%s", response.getSubCode(), response.getSubMsg()));
+            }
+            log.info("body:" + response.getBody());
+        }
+    }
+    
+    public void trade_precreate(String price, String operator, String trade_no) {
+        // (必填) 商户网站订单系统中唯一订单号，64个字符以内，只能包含字母、数字、下划线，
+        // 需保证商户系统端不能重复，建议通过数据库sequence生成，
+        String outTradeNo = trade_no;
+
+        // (必填) 订单标题，粗略描述用户的支付目的。如“xxx品牌xxx门店当面付扫码消费”
+        String subject = "xxx品牌xxx门店当面付扫码消费";
+
+        // (必填) 订单总金额，单位为元，不能超过1亿元
+        // 如果同时传入了【打折金额】,【不可打折金额】,【订单总金额】三者,则必须满足如下条件:【订单总金额】=【打折金额】+【不可打折金额】
+        String totalAmount = price;
+
+        // (可选) 订单不可打折金额，可以配合商家平台配置折扣活动，如果酒水不参与打折，则将对应金额填写至此字段
+        // 如果该值未传入,但传入了【订单总金额】,【打折金额】,则该值默认为【订单总金额】-【打折金额】
+        String undiscountableAmount = "0";
+
+        // 卖家支付宝账号ID，用于支持一个签约账号下支持打款到不同的收款账号，(打款到sellerId对应的支付宝账号)
+        // 如果该字段为空，则默认为与支付宝签约的商户的PID，也就是appid对应的PID
+        String sellerId = "";
+
+        // 订单描述，可以对交易或商品进行一个详细地描述，比如填写"购买商品2件共15.00元"
+        String body = "购买商品3件共20.00元";
+
+        // 商户操作员编号，添加此参数可以为商户操作员做销售统计
+        String operatorId = operator;
+
+        // (可选) 商户门店编号，通过门店号和商家后台可以配置精准到门店的折扣信息，详询支付宝技术支持
+        String storeId = "xxx";
+
+//        ExtendParams extendParams = new ExtendParams();
+        // 业务扩展参数，目前可添加由支付宝分配的系统商编号(通过setSysServiceProviderId方法)，详情请咨询支付宝技术支持
+//        extendParams.setSysServiceProviderId("2088100200300400500");
+
+        // 支付超时，定义为120分钟
+        String timeoutExpress = "10m";
+
+
+        // 创建扫码支付请求builder，设置请求参数
+        AlipayTradePrecreateRequestBuilder builder = new AlipayTradePrecreateRequestBuilder()
+                .setSubject(subject)
+                .setTotalAmount(totalAmount)
+                .setOutTradeNo(outTradeNo)
+                .setUndiscountableAmount(undiscountableAmount)
+                .setSellerId(sellerId)
+                .setBody(body)
+                .setOperatorId(operatorId)
+                .setStoreId(storeId)
+                .setTimeoutExpress(timeoutExpress);
+
+        AlipayF2FPrecreateResult result = tradeService.tradePrecreate(builder);
+        switch (result.getTradeStatus()) {
+            case SUCCESS:
+                log.info("支付宝预下单成功: )");
+
+                AlipayTradePrecreateResponse response = result.getResponse();
+                dumpResponse(response);
+
+                // 需要修改为运行机器上的路径
+                String filePath = String.format("/Users/liuyangkly/qr-%s.png", response.getOutTradeNo());
+                log.info("filePath:" + filePath);
+//                ZxingUtils.getQRCodeImge(response.getQrCode(), 256, filePath);
+                break;
+
+            case FAILED:
+                log.error("支付宝预下单失败!!!");
+                break;
+
+            case UNKNOWN:
+                log.error("系统异常，预下单状态未知!!!");
+                break;
+
+            default:
+                log.error("不支持的交易状态，交易返回异常!!!");
+                break;
+        }
+    }
+    
+	String wait_order_status(String no) throws InterruptedException {
+		AlipayTradeQueryRequestBuilder builder = new AlipayTradeQueryRequestBuilder();
+		builder.setOutTradeNo(no);
+		AlipayTradeQueryResponse resp = tradeService.tradeQuery(builder);
+		String s = resp.getTradeStatus();
+		int try_time = 0,
+			MAX_TRY = 50;
+		while (s == "WAIT_BUYER_PAY" && try_time < MAX_TRY) {
+			resp = tradeService.tradeQuery(builder);
+			s = resp.getTradeStatus();
+			Thread.sleep(5 * 1000);
+			try_time++;
+			System.out.printf("waiting for pay status ... [%d]\n", try_time);
+		}
+		if (try_time > MAX_TRY) {
+			return "Time out";
+		} else {
 			return s;
-		} catch (AlipayApiException e) {
-			// TODO Auto-generated catch block
-			System.out.println(e.getErrMsg());
-			e.printStackTrace();
 		}
-		return "Unrecognized error";
-
 	}
 	public static void main(String[] args) throws IOException, InterruptedException {
 		ServerSocket listener = new ServerSocket(8686);
 		Server myserver = new Server();
-		myserver.initAlipayClient();
         try {
             while (true) {
             	System.out.println("init a new thread...");
@@ -116,11 +180,12 @@ class worker extends Thread {
                 new PrintWriter(sk.getOutputStream(), true);
 
         	String seg[] = input.split(":");
-        	float price = Float.parseFloat(seg[1]);
-        	String tradeNo = seg[0];
-        	s.tradePreOrder(tradeNo, price, seg[2]);
+        	String trade_no = seg[0];
+        	String price = seg[1];
+        	String operator = seg[2];
+        	s.trade_precreate(trade_no, price, operator);
         	
-        	String ret = s.waitOrderStatus(tradeNo);
+        	String ret = s.wait_order_status(trade_no);
         	out.println("alipay status: " + ret);
         	sk.close();
         } catch (Exception e) {
