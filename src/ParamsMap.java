@@ -3,8 +3,9 @@ import java.util.Map;
 
 public class ParamsMap {
 	Map<String, Object> m = new HashMap<String, Object>();
-	public void addKV(String key, Object value) {
+	public ParamsMap addKV(String key, Object value) {
 		m.put(key, value);
+		return this;
 	}
 	
 	public String toJson() {
