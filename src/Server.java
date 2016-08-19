@@ -21,7 +21,6 @@ import com.alipay.demo.trade.service.impl.AlipayTradeServiceImpl;
 
 public class Server {
 	private static Log log = LogFactory.getLog(Server.class);
-
     // 支付宝当面付2.0服务
     private static AlipayTradeService tradeService;
     static {
@@ -40,20 +39,21 @@ public class Server {
     private void dumpResponse(AlipayResponse response) {
         if (response != null) {
             log.info(String.format("code:%s, msg:%s", response.getCode(), response.getMsg()));
-            if (!response.getSubCode().equals("")) {
+            String sub_code = response.getSubCode();
+            if (sub_code != null && sub_code.equals("")) {
                 log.info(String.format("subCode:%s, subMsg:%s", response.getSubCode(), response.getSubMsg()));
             }
             log.info("body:" + response.getBody());
         }
     }
     
-    public void trade_precreate(String price, String operator, String trade_no) {
+    public String trade_precreate(String price, String operator, String trade_no) {
         // (必填) 商户网站订单系统中唯一订单号，64个字符以内，只能包含字母、数字、下划线，
         // 需保证商户系统端不能重复，建议通过数据库sequence生成，
         String outTradeNo = trade_no;
 
         // (必填) 订单标题，粗略描述用户的支付目的。如“xxx品牌xxx门店当面付扫码消费”
-        String subject = "xxx品牌xxx门店当面付扫码消费";
+        String subject = "LESS & MORE 门店当面付扫码消费";
 
         // (必填) 订单总金额，单位为元，不能超过1亿元
         // 如果同时传入了【打折金额】,【不可打折金额】,【订单总金额】三者,则必须满足如下条件:【订单总金额】=【打折金额】+【不可打折金额】
@@ -103,12 +103,11 @@ public class Server {
 
                 AlipayTradePrecreateResponse response = result.getResponse();
                 dumpResponse(response);
-
+                return response.getQrCode();
                 // 需要修改为运行机器上的路径
-                String filePath = String.format("/Users/liuyangkly/qr-%s.png", response.getOutTradeNo());
-                log.info("filePath:" + filePath);
+//                String filePath = String.format("~/Documents/eclipse_work/AlipayServer/qr-%s.png", response.getOutTradeNo());
+//                log.info("filePath:" + filePath);
 //                ZxingUtils.getQRCodeImge(response.getQrCode(), 256, filePath);
-                break;
 
             case FAILED:
                 log.error("支付宝预下单失败!!!");
@@ -122,6 +121,7 @@ public class Server {
                 log.error("不支持的交易状态，交易返回异常!!!");
                 break;
         }
+        return "";
     }
     
 	String wait_order_status(String no) throws InterruptedException {
@@ -130,15 +130,16 @@ public class Server {
 		AlipayTradeQueryResponse resp = tradeService.tradeQuery(builder);
 		String s = resp.getTradeStatus();
 		int try_time = 0,
-			MAX_TRY = 50;
-		while (s == "WAIT_BUYER_PAY" && try_time < MAX_TRY) {
+			MAX_TRY = 100;
+		System.out.printf("waiting for pay status ... [%d][%s]\n", try_time, s);
+		while ((s == null || s.equals("WAIT_BUYER_PAY")) && try_time < MAX_TRY) {
 			resp = tradeService.tradeQuery(builder);
 			s = resp.getTradeStatus();
 			Thread.sleep(5 * 1000);
 			try_time++;
-			System.out.printf("waiting for pay status ... [%d]\n", try_time);
+			System.out.printf("waiting for pay status ... [%d][%s]\n", try_time, s);
 		}
-		if (try_time > MAX_TRY) {
+		if (try_time >= MAX_TRY) {
 			return "Time out";
 		} else {
 			return s;
@@ -183,10 +184,15 @@ class worker extends Thread {
         	String trade_no = seg[0];
         	String price = seg[1];
         	String operator = seg[2];
-        	s.trade_precreate(trade_no, price, operator);
-        	
-        	String ret = s.wait_order_status(trade_no);
-        	out.println("alipay status: " + ret);
+        	String qr_code = s.trade_precreate(price, operator, trade_no);
+        	if (!qr_code.equals("")) {
+        		System.out.println("QR: " + qr_code);
+        		out.println("QR:" + qr_code);
+        		out.flush();
+        	}
+        	Thread.sleep(5000);
+        	String status = s.wait_order_status(trade_no);
+        	out.println("trade status: " + status);
         	sk.close();
         } catch (Exception e) {
         	System.out.println(e.getMessage());
