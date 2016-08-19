@@ -4,7 +4,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Date;
 
 import com.alipay.api.AlipayApiException;
 import com.alipay.api.DefaultAlipayClient;
@@ -15,7 +14,8 @@ import com.alipay.api.response.AlipayTradeQueryResponse;
 
 
 public class Server {
-	static String AliAppid = "2016081801766057";
+//	static String AliAppid = "2016081801766057";
+	static String AliAppid = "2016081101734710";
 	static String ALIPAY_PUBLIC_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDI6d306Q8fIfCOaTXyiUeJHkrIvYISRcc73s3vF1ZT7XN8RNPwJxo8pWaJMmvyTn9N4HQ632qJBVHf8sxHi/fEsraprwCtzvzQETrNRwVxLO5jVmRGi60j8Ue1efIlzPXV9je9mkjzOmdssymZkh2QhUrCmZYI/FCEa3/cNMW0QIDAQAB";
 	static String APP_PRIVATE_KEY = "MIICcwIBADANBgkqhkiG9w0BAQEFAASCAl0wggJZAgEAAoGBAONa6kQCV5j/OL6Xnwt3pZ0ZmZpXnyM7wzzKsnUwbzNXTK1xZvlmRyZBlJS1Zd+x5GnROAuv+5r6QzNbY+9HwaCNIK9VZhIDeB+rZ/CnYaBLtQVJUFT1ccVZhXal4Txt/bM2LL/OgHdvlHrfWzVzPktfIciCJEAVya3guvpcuwrZAgMBAAECfyYwHylNO2l3dRCOZyiF8EtzAVnrXc+NOj37zf3hJMx63WZEpgc+JrVGTq6ryXDJcJRVkBRmetyNLLxznVWTt/Huls5p6KcJwROVXKPhwPRzLOKQd+zSY/pIALT0ZD0n176CSmmMTpc6+QVETV5X6Pe9MXVdA1T8QHxvvDA+ygECQQD/CBRuuJC2fXabhQeHKa94dzv98g82my/m4r9TRyyUSwpciT1sY+0nfm8DARqROkIJ8iJU5xt+Yf2b2LZDeHeZAkEA5DfuO7kEl/QGTsPP3GKWT31H3hneztHS78aB/qrFJptxLMey+J6wwcE0G+so5k+UWi55MGKtiAWgQ5EmcrI1QQJAcuPc8JRM/SlASYeAgK+S0R5F9H0bxWncBpOXxZiGyLeVj2J0PWQ27lfTAvN4WHx6S6i9Nqp2hFT4v0C9u1+F4QJAbbIIm8JR1+wegAuUxNzKXQjd237Z3tVyK3hiEZPp0aXTn2+ZsfEtCuSf9G9zKEjGCRbff4de28vAfdmt/mF0QQJADlS6M9xgL9ZotRZFhmkvVJ5FvHU4717oTFTl8iJGpFNuxuzi3Szq12X72Wv6gLsUg2ap6a64GfClNg/gNo5pAw==";
 	
@@ -27,7 +27,7 @@ public class Server {
 				AliAppid,
 				APP_PRIVATE_KEY,
 				"json",
-				"utf8",
+				"utf-8",
 				ALIPAY_PUBLIC_KEY);
 		alipay_pre_trade_req = new AlipayTradePrecreateRequest();//创建API对应的request类
 	}
@@ -36,9 +36,9 @@ public class Server {
 		// 参数具体含义ref: https://doc.open.alipay.com/docs/api.htm?spm=a219a.7386797.0.0.2cPt2c&docType=4&apiId=862
 		param.addKV("out_trade_no", no)
 			.addKV("total_amount", price)
-			.addKV("subject", "test alipay")
-			.addKV("operator_id", operator)
-			.addKV("timeout_express", "30m");
+			.addKV("subject", "test alipay");
+//			.addKV("operator_id", operator)
+//			.addKV("timeout_express", "30m");
 		System.out.println("param json:\n" + param.toJson());
 		alipay_pre_trade_req.setBizContent(param.toJson());
 		try {
