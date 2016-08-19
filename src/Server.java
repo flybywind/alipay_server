@@ -1,9 +1,5 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 
 import com.alipay.api.AlipayApiException;
 import com.alipay.api.DefaultAlipayClient;
@@ -12,19 +8,43 @@ import com.alipay.api.request.AlipayTradeQueryRequest;
 import com.alipay.api.response.AlipayTradePrecreateResponse;
 import com.alipay.api.response.AlipayTradeQueryResponse;
 
-public class Server {
-	// static String AliAppid = "2016081801766057";
-	static String AliAppid = "2016081101734710";
-	static String ALIPAY_PUBLIC_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDI6d306Q8fIfCOaTXyiUeJHkrIvYISRcc73s3vF1ZT7XN8RNPwJxo8pWaJMmvyTn9N4HQ632qJBVHf8sxHi/fEsraprwCtzvzQETrNRwVxLO5jVmRGi60j8Ue1efIlzPXV9je9mkjzOmdssymZkh2QhUrCmZYI/FCEa3/cNMW0QIDAQAB";
-	static String APP_PRIVATE_KEY = "MIICcwIBADANBgkqhkiG9w0BAQEFAASCAl0wggJZAgEAAoGBAONa6kQCV5j/OL6Xnwt3pZ0ZmZpXnyM7wzzKsnUwbzNXTK1xZvlmRyZBlJS1Zd+x5GnROAuv+5r6QzNbY+9HwaCNIK9VZhIDeB+rZ/CnYaBLtQVJUFT1ccVZhXal4Txt/bM2LL/OgHdvlHrfWzVzPktfIciCJEAVya3guvpcuwrZAgMBAAECfyYwHylNO2l3dRCOZyiF8EtzAVnrXc+NOj37zf3hJMx63WZEpgc+JrVGTq6ryXDJcJRVkBRmetyNLLxznVWTt/Huls5p6KcJwROVXKPhwPRzLOKQd+zSY/pIALT0ZD0n176CSmmMTpc6+QVETV5X6Pe9MXVdA1T8QHxvvDA+ygECQQD/CBRuuJC2fXabhQeHKa94dzv98g82my/m4r9TRyyUSwpciT1sY+0nfm8DARqROkIJ8iJU5xt+Yf2b2LZDeHeZAkEA5DfuO7kEl/QGTsPP3GKWT31H3hneztHS78aB/qrFJptxLMey+J6wwcE0G+so5k+UWi55MGKtiAWgQ5EmcrI1QQJAcuPc8JRM/SlASYeAgK+S0R5F9H0bxWncBpOXxZiGyLeVj2J0PWQ27lfTAvN4WHx6S6i9Nqp2hFT4v0C9u1+F4QJAbbIIm8JR1+wegAuUxNzKXQjd237Z3tVyK3hiEZPp0aXTn2+ZsfEtCuSf9G9zKEjGCRbff4de28vAfdmt/mF0QQJADlS6M9xgL9ZotRZFhmkvVJ5FvHU4717oTFTl8iJGpFNuxuzi3Szq12X72Wv6gLsUg2ap6a64GfClNg/gNo5pAw==";
+import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.configuration.HierarchicalINIConfiguration;
 
+public class Server {
+	private HierarchicalINIConfiguration config;
 	private DefaultAlipayClient alipay_client;
 	private AlipayTradePrecreateRequest alipay_pre_trade_req;
-
-	void initAlipayClient() {
+	
+	void initAlipayClient() throws ConfigurationException {
+		// 加载配置：
+		config = new HierarchicalINIConfiguration("ydz.ini");
+		String AliAppid, AliGateWay, ALIPAY_PUBLIC_KEY, APP_PRIVATE_KEY, 
+			charset = "", 
+			encode = "";
+		AliAppid = config.getString("appid");
+		ALIPAY_PUBLIC_KEY = config.getString("alipay_publick_key");
+		APP_PRIVATE_KEY = config.getString("app_private_key");
+		AliGateWay = config.getString("ali_gate_way");
+		if (nullString(AliGateWay) || 
+			nullString(ALIPAY_PUBLIC_KEY) ||
+			nullString(APP_PRIVATE_KEY) ||
+			nullString(AliGateWay)) {
+			System.err.println("缺少必须的配置");
+			System.exit(-1);
+		}
+		
+		charset = config.getString("charset");
+		encode = config.getString("encode");
+		if (nullString(charset)) {
+			charset = "utf-8";
+		}
+		if (nullString(encode)) {
+			encode = "json";
+		}
 		// 实例化客户端
-		alipay_client = new DefaultAlipayClient("https://openapi.alipay.com/gateway.do", AliAppid, APP_PRIVATE_KEY,
-				"json", "utf-8", ALIPAY_PUBLIC_KEY);
+		alipay_client = new DefaultAlipayClient(AliGateWay, AliAppid, APP_PRIVATE_KEY,
+				encode, charset, ALIPAY_PUBLIC_KEY);
 		alipay_pre_trade_req = new AlipayTradePrecreateRequest();// 创建API对应的request类
 	}
 
@@ -56,7 +76,7 @@ public class Server {
 		return "";
 	}
 
-	String waitOrderStatus(String no) throws InterruptedException {
+	void waitOrderStatus(String no, String operator) throws InterruptedException {
 		AlipayTradeQueryRequest req = new AlipayTradeQueryRequest();
 
 		ParamsMap p = new ParamsMap();
@@ -67,42 +87,123 @@ public class Server {
 		try {
 			resp = alipay_client.execute(req);
 			String s = resp.getTradeStatus();
-			int ti = 0, MAX_TRY = 900;
+			String recall_url = config.getString("recall_url");
+			int ti = 0, MAX_TRY = 0, loop_period = 0;
+			MAX_TRY = config.getInt("loop_max_try");
+			loop_period = config.getInt("loop_period");
+			
+			if (MAX_TRY == 0) {
+				MAX_TRY = 900;
+			}
+			if (loop_period == 0) {
+				loop_period = 2;
+			}
 			System.out.printf("waiting for pay status ... [%d][%s]\n", ti, s);
-
+			// 当用户没有扫描的时候，s == null，显示没有交易记录
 			while ((s == null || s.equals("WAIT_BUYER_PAY")) && ti < MAX_TRY) {
 				resp = alipay_client.execute(req);
 				s = resp.getTradeStatus();
-				Thread.sleep(2 * 1000);
+				Thread.sleep(loop_period * 1000);
 				ti++;
 				System.out.printf("waiting for pay status ... [%d][%s]\n", ti, s);
 			}
-			if (ti >= MAX_TRY) {
-				return "Time out";
-			} else {
-				return s;
+
+			// 调用http请求，发送结果
+			if (nullString(recall_url)) {
+				System.err.println("没有指定回调url！");
+				return;
 			}
+			ParamsMap post_body = new ParamsMap();
+			post_body.addKV("Opr", operator);
+			if (ti >= MAX_TRY) {
+				post_body.addKV("To", 1);
+			} else {
+				post_body.addKV("To", 0)
+					.addKV("User", resp.getBuyerLogonId())
+					.addKV("Total", resp.getTotalAmount());
+				if (s == null) {
+					post_body.addKV("St", -1)
+					.addKV("Msg", "未知错误");
+				} else if (s.equals("TRADE_SUCCESS")) {
+					post_body.addKV("St", 0);
+				} else if(s.equals("TRADE_CLOSED")) {
+					post_body.addKV("St", 1)
+						.addKV("Msg","交易超时关闭，或已全额退款");
+				} else if(s.equals("TRADE_FINISHED")) {
+					post_body.addKV("St", 1)
+						.addKV("Msg", "交易结束");
+				} else {
+					post_body.addKV("St", -1)
+						.addKV("Msg", "未知错误");
+				}
+			}
+			executePost(recall_url, post_body.toUrlQuery());
 		} catch (AlipayApiException e) {
-			// TODO Auto-generated catch block
 			System.out.println(e.getErrMsg());
 			e.printStackTrace();
 		}
-		return "Unrecognized error";
-
 	}
 
-	public static void main(String[] args) throws IOException, InterruptedException {
+	static void executePost(String targetURL, String urlParameters) {
+		HttpURLConnection connection = null;
+
+		try {
+			// Create connection
+			URL url = new URL(targetURL);
+			connection = (HttpURLConnection) url.openConnection();
+			connection.setRequestMethod("POST");
+			connection.setRequestProperty("Content-Type",
+						"application/x-www-form-urlencoded");
+
+			connection.setRequestProperty("Content-Length", Integer.toString(urlParameters.getBytes().length));
+		    connection.setRequestProperty("Content-Language", "en-US");  
+
+			connection.setUseCaches(false);
+			connection.setDoOutput(true);
+			connection.setDoInput(true);
+			// Send request
+			DataOutputStream wr = new DataOutputStream(connection.getOutputStream());
+			wr.writeBytes(urlParameters);
+			wr.close();
+			
+			//Get Response  
+		    InputStream is = connection.getInputStream();
+		    BufferedReader rd = new BufferedReader(new InputStreamReader(is));
+		    StringBuilder response = new StringBuilder(); // or StringBuffer if Java version 5+
+		    String line;
+		    while ((line = rd.readLine()) != null) {
+		      response.append(line);
+		      response.append("\n\r");
+		    }
+		    rd.close();
+		    System.out.println("微信通知: " + response.toString());
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			if (connection != null) {
+				connection.disconnect();
+			}
+		}
+	}
+	public static void main(String[] args) 
+			throws IOException, InterruptedException {
 		ServerSocket listener = new ServerSocket(8686);
 		Server myserver = new Server();
-		myserver.initAlipayClient();
 		try {
+			myserver.initAlipayClient();
 			while (true) {
 				System.out.println("init a new thread...");
 				new worker(listener.accept(), myserver).start();
 			}
-		} finally {
+		} catch (ConfigurationException e) {
+			System.err.println("init failed:\n" + e.getMessage());
+			e.printStackTrace();
+		}finally {
 			listener.close();
 		}
+	}
+	private	boolean nullString(String str) {
+		return (str == null || str.equals(""));
 	}
 }
 
@@ -124,15 +225,15 @@ class worker extends Thread {
 			PrintWriter out = new PrintWriter(sk.getOutputStream(), true);
 
 			String seg[] = input.split(":");
-			float price = Float.parseFloat(seg[1]);
 			String tradeNo = seg[0];
-			String qr_url = s.tradePreOrder(tradeNo, price, seg[2]);
+			float price = Float.parseFloat(seg[1]);
+			String operator = seg[2];
+			String qr_url = s.tradePreOrder(tradeNo, price, operator);
 			out.println("QR:"+qr_url);
 			out.flush();
 			if (!qr_url.equals("")) {
-				Thread.sleep(13000);
-				String ret = s.waitOrderStatus(tradeNo);
-				out.println(ret);
+				Thread.sleep(20000);
+				s.waitOrderStatus(tradeNo, operator);
 			}
 			sk.close();
 		} catch (Exception e) {
