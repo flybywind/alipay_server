@@ -19,6 +19,7 @@ public class ParamsMap {
 				sb.append("\"" + en.getKey() + "\":" + value.toString() + ",");
 			}
 		}
+		sb.deleteCharAt(sb.length()-1);
 		sb.append("}");
 		return sb.toString();
 	}
